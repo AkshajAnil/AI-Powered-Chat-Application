@@ -1,0 +1,17 @@
+{
+  "name": "full-stack-chat-application",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Real-time chat app: React (Vite) + Node.js/Express + Socket.io + SQLite",
+  "scripts": {
+    "install:all": "npm --prefix backend install && npm --prefix frontend install",
+    "dev:backend": "npm --prefix backend run dev",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "dev": "concurrently -n api,web -c blue,green \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "start:backend": "npm --prefix backend start",
+    "test": "npm --prefix backend test && npm --prefix frontend run build"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}
