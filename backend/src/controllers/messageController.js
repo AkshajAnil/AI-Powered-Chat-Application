@@ -1,17 +1,24 @@
 const asyncHandler = require('../utils/asyncHandler');
 const ApiError = require('../utils/ApiError');
 const { isReservedName } = require('../agents/registry');
-const { validateMessageInput, validateListQuery, validateReadInput } = require('../validators/chatValidators');
+const {
+  validateMessageInput,
+  validateListQuery,
+  validateReadInput,
+} = require('../validators/chatValidators');
 
 const createMessageController = ({ messageService }) => ({
   list: asyncHandler(async (req, res) => {
     const query = validateListQuery(req.query);
-    const messages = await messageService.listMessages(query);
+    const messages = await messageService.listMessages({
+      ...query,
+      after: req.user.joinedAt || null,
+    });
     res.json({ success: true, data: messages, meta: { count: messages.length } });
   }),
 
   create: asyncHandler(async (req, res) => {
-    const input = validateMessageInput(req.body || {});
+    const input = validateMessageInput({ ...(req.body || {}), author: req.user.username });
     if (isReservedName(input.author)) {
       throw ApiError.badRequest(`"${input.author}" is reserved for an AI agent.`);
     }
@@ -20,7 +27,7 @@ const createMessageController = ({ messageService }) => ({
   }),
 
   markRead: asyncHandler(async (req, res) => {
-    const input = validateReadInput(req.body || {});
+    const input = validateReadInput({ ...(req.body || {}), reader: req.user.username });
     const updated = await messageService.markMessagesRead(input);
     res.json({ success: true, data: { updatedIds: updated.map((m) => m.id) } });
   }),

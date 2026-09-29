@@ -49,30 +49,36 @@ const createPresenceStore = () => {
 /** In-memory typing state with automatic timeout (users rarely press "stop"). */
 const createTypingStore = ({ onChange, timeoutMs = 3000 } = {}) => {
   const timers = new Map();
-  const typing = new Set();
+  const typing = new Map();
 
-  const sync = () => onChange?.([...typing].sort((a, b) => a.localeCompare(b)));
+  const sync = (conversationId) =>
+    onChange?.([...(typing.get(conversationId) || [])].sort((a, b) => a.localeCompare(b)), conversationId);
 
-  const start = (username) => {
+  const start = (username, conversationId = 'global') => {
     if (!username) return;
-    typing.add(username);
-    const existing = timers.get(username);
+    const users = typing.get(conversationId) || new Set();
+    users.add(username);
+    typing.set(conversationId, users);
+    const key = `${conversationId}:${username}`;
+    const existing = timers.get(key);
     if (existing) clearTimeout(existing);
-    timers.set(
-      username,
-      setTimeout(() => stop(username), timeoutMs)
-    );
-    sync();
+    timers.set(key, setTimeout(() => stop(username, conversationId), timeoutMs));
+    sync(conversationId);
   };
 
-  const stop = (username) => {
-    const timer = timers.get(username);
+  const stop = (username, conversationId = 'global') => {
+    const key = `${conversationId}:${username}`;
+    const timer = timers.get(key);
     if (timer) clearTimeout(timer);
-    timers.delete(username);
-    if (typing.delete(username)) sync();
+    timers.delete(key);
+    const users = typing.get(conversationId);
+    if (users?.delete(username)) {
+      if (!users.size) typing.delete(conversationId);
+      sync(conversationId);
+    }
   };
 
-  const users = () => [...typing];
+  const users = (conversationId = 'global') => [...(typing.get(conversationId) || [])];
 
   return { start, stop, users };
 };

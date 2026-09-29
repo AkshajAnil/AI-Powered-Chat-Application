@@ -1,0 +1,36 @@
+services:
+  - type: keyvalue
+    name: ai-powered-chat-app-redis
+    region: singapore
+    plan: free
+    ipAllowList: []
+    maxmemoryPolicy: noeviction
+    persistenceMode: 'off'
+
+  - type: web
+    name: ai-powered-chat-app-api
+    runtime: node
+    region: singapore
+    plan: free
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DB_DRIVER
+        value: redis
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: ai-powered-chat-app-redis
+          property: connectionString
+      - key: REDIS_KEY_PREFIX
+        value: chatapp
+      - key: JWT_SECRET
+        generateValue: true
+      - key: SEED_USERNAME
+        value: pilot_user
+      - key: SEED_PASSWORD
+        sync: false

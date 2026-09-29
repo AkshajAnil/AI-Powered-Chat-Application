@@ -28,16 +28,29 @@ const mergeMessage = (list, incoming) => {
 
 const TYPING_THROTTLE_MS = 1500;
 
-export const useChat = (username) => {
+const GLOBAL_CONVERSATION = 'global';
+
+const agentConversationId = (username, agentName) =>
+  `agent:${encodeURIComponent(username)}:${agentName.toLowerCase()}`;
+
+export const useChat = (username, token, activeAgent = null) => {
   const [messages, setMessages] = useState([]);
   const [onlineUsers, setOnlineUsers] = useState([]);
   const [typingUsers, setTypingUsers] = useState([]);
   const [connection, setConnection] = useState('connecting');
+  const [joined, setJoined] = useState(false);
+  const [joinedConversation, setJoinedConversation] = useState(null);
   const [error, setError] = useState(null);
   const [pageVisible, setPageVisible] = useState(
     () => typeof document === 'undefined' || document.visibilityState === 'visible'
   );
   const typingRef = useRef({ active: false, lastSentAt: 0 });
+  const activeConversationId = activeAgent
+    ? agentConversationId(username, activeAgent)
+    : GLOBAL_CONVERSATION;
+  const activeConversationRef = useRef(activeConversationId);
+  activeConversationRef.current = activeConversationId;
+  const historyRequestRef = useRef(0);
 
   useEffect(() => {
     const handleVisibility = () => setPageVisible(document.visibilityState === 'visible');
@@ -48,32 +61,43 @@ export const useChat = (username) => {
   useEffect(() => {
     let cancelled = false;
 
-    const socket = getSocket();
+    const socket = getSocket(token);
 
     const handleConnect = () => {
       setConnection('connected');
       socket.emit('join', { username }, (ack) => {
         if (cancelled) return;
-        if (!ack?.ok) setError(ack?.error?.message || 'Could not join the chat.');
+        if (!ack?.ok) {
+          setError(ack?.error?.message || 'Could not join the chat.');
+          return;
+        }
+        setJoined(true);
       });
     };
     const handleDisconnect = () => {
       setConnection('disconnected');
+      setJoined(false);
+      setJoinedConversation(null);
       typingRef.current = { active: false, lastSentAt: 0 };
     };
     const handleConnectError = (err) => {
       setConnection('disconnected');
       setError(err?.message || 'Real-time connection failed.');
     };
-    const handleNewMessage = (message) => setMessages((prev) => mergeMessage(prev, message));
+    const handleNewMessage = (message) => {
+      if ((message.conversationId || GLOBAL_CONVERSATION) !== activeConversationRef.current) return;
+      setMessages((prev) => mergeMessage(prev, message));
+    };
     const handleStatus = ({ id, status }) =>
       setMessages((prev) => prev.map((m) => (m.id === id ? { ...m, status } : m)));
     const handlePresenceList = ({ onlineUsers: users }) => setOnlineUsers(users || []);
     const handlePresence = (update) => {
       if (Array.isArray(update?.onlineUsers)) setOnlineUsers(update.onlineUsers);
     };
-    const handleTyping = ({ users }) =>
+    const handleTyping = ({ users, conversationId = GLOBAL_CONVERSATION }) => {
+      if (conversationId !== activeConversationRef.current) return;
       setTypingUsers((users || []).filter((name) => name !== username));
+    };
     const handleServerError = (payload) => setError(payload?.message || 'Server error.');
 
     socket.on('connect', handleConnect);
@@ -89,16 +113,6 @@ export const useChat = (username) => {
     if (socket.connected) handleConnect();
     socket.connect();
 
-    api
-      .fetchMessages()
-      .then((data) => {
-        if (cancelled) return;
-        setMessages((prev) => data.reduce((acc, message) => mergeMessage(acc, message), prev));
-      })
-      .catch((err) => {
-        if (!cancelled) setError(err.message);
-      });
-
     return () => {
       cancelled = true;
       socket.off('connect', handleConnect);
@@ -112,7 +126,42 @@ export const useChat = (username) => {
       socket.off('chat:error', handleServerError);
       teardownSocket();
     };
-  }, [username]);
+  }, [username, token]);
+
+  useEffect(() => {
+    setTypingUsers([]);
+    typingRef.current = { active: false, lastSentAt: 0 };
+    setJoinedConversation(null);
+    if (connection !== 'connected' || !joined) return;
+    const socket = getSocket(token);
+    socket.emit('conversation:join', { agent: activeAgent }, (ack) => {
+      if (!ack?.ok) {
+        setError(ack?.error?.message || 'Could not open this conversation.');
+        return;
+      }
+      if (activeConversationRef.current === ack.conversationId) {
+        setJoinedConversation(ack.conversationId);
+        setMessages((prev) =>
+          ack.messages.reduce((acc, message) => mergeMessage(acc, message), prev)
+        );
+      }
+    });
+  }, [username, token, activeAgent, connection, joined]);
+
+  useEffect(() => {
+    const requestId = ++historyRequestRef.current;
+    setMessages([]);
+    if (activeAgent) return;
+    api
+      .fetchMessages()
+      .then((data) => {
+        if (requestId !== historyRequestRef.current) return;
+        setMessages((prev) => data.reduce((acc, message) => mergeMessage(acc, message), prev));
+      })
+      .catch((err) => {
+        if (requestId === historyRequestRef.current) setError(err.message);
+      });
+  }, [username, activeAgent]);
 
   useEffect(() => {
     if (!error) return undefined;
@@ -122,13 +171,13 @@ export const useChat = (username) => {
 
   const markRead = useCallback((ids) => {
     if (!ids?.length) return;
-    getSocket().emit('message:read', { ids }, (ack) => {
+    getSocket(token).emit('message:read', { ids }, (ack) => {
       if (!ack?.ok || !ack.updatedIds?.length) return;
       setMessages((prev) =>
         prev.map((m) => (ack.updatedIds.includes(m.id) ? { ...m, status: 'read' } : m))
       );
     });
-  }, []);
+  }, [token]);
 
   useEffect(() => {
     if (connection !== 'connected' || !pageVisible) return undefined;
@@ -146,7 +195,8 @@ export const useChat = (username) => {
   }, [messages]);
 
   const dispatchSend = useCallback((message) => {
-    getSocket().emit('message:send', { text: message.text, clientId: message.clientId }, (ack) => {
+    getSocket(token).emit('message:send', { text: message.text, clientId: message.clientId }, (ack) => {
+      if (message.conversationId !== activeConversationRef.current) return;
       if (!ack?.ok) {
         setMessages((prev) =>
           prev.map((m) =>
@@ -160,7 +210,7 @@ export const useChat = (username) => {
       }
       setMessages((prev) => mergeMessage(prev, ack.message));
     });
-  }, []);
+  }, [token]);
 
   const sendMessage = useCallback(
     (rawText) => {
@@ -173,6 +223,7 @@ export const useChat = (username) => {
         clientId,
         author: username,
         text,
+        conversationId: activeConversationRef.current,
         status: 'sending',
         pending: true,
         createdAt: new Date().toISOString(),
@@ -192,13 +243,13 @@ export const useChat = (username) => {
         )
       );
       const target = messagesRef.current.find((m) => m.clientId === clientId);
-      if (target) dispatchSend({ clientId, text: target.text });
+      if (target) dispatchSend({ clientId, text: target.text, conversationId: target.conversationId });
     },
     [dispatchSend]
   );
 
   const notifyTyping = useCallback((isTyping) => {
-    const socket = getSocket();
+    const socket = getSocket(token);
     const now = Date.now();
     const state = typingRef.current;
 
@@ -210,13 +261,14 @@ export const useChat = (username) => {
       typingRef.current = { active: false, lastSentAt: 0 };
       socket.emit('typing', { isTyping: false });
     }
-  }, []);
+  }, [token]);
 
   return {
     messages,
     onlineUsers,
     typingUsers,
     connection,
+    conversationReady: joinedConversation === activeConversationId,
     error,
     clearError: () => setError(null),
     sendMessage,

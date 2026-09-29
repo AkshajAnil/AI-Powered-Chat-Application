@@ -1,7 +1,7 @@
 const path = require('path');
 const dotenv = require('dotenv');
 
-dotenv.config({ quiet: true });
+dotenv.config({ path: path.resolve(__dirname, '..', '..', '.env'), quiet: true });
 
 const parseList = (value = '') =>
   value
@@ -23,10 +23,24 @@ const config = {
   corsOrigins: parseList(process.env.CORS_ORIGINS).length
     ? parseList(process.env.CORS_ORIGINS)
     : ['*'],
+  jwtSecret: process.env.JWT_SECRET || 'local-development-only-change-before-deploy',
+  seedUser: {
+    username: process.env.SEED_USERNAME || 'pilot_user',
+    password: process.env.SEED_PASSWORD || '1234',
+  },
+  groq: {
+    apiKey: process.env.GROQ_API_KEY || '',
+    model: process.env.GROQ_MODEL || 'openai/gpt-oss-120b',
+    temperature: Number.parseFloat(process.env.GROQ_TEMPERATURE || '0.7') || 0.7,
+  },
   db: {
-    driver: (process.env.DB_DRIVER || 'sqlite').toLowerCase(),
+    driver: (process.env.DB_DRIVER || 'redis').toLowerCase(),
     dataDir,
     filePath: path.resolve(process.env.DATABASE_PATH || path.join(dataDir, 'chat.db')),
+    redis: {
+      url: process.env.REDIS_URL || 'redis://localhost:6379',
+      keyPrefix: process.env.REDIS_KEY_PREFIX || 'chatapp',
+    },
     postgres: {
       host: process.env.PGHOST || 'localhost',
       port: toInt(process.env.PGPORT, 5432),

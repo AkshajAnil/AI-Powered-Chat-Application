@@ -12,6 +12,14 @@ class ApiError extends Error {
     return new ApiError(400, message, 'BAD_REQUEST', details);
   }
 
+  static unauthorized(message = 'Authentication required.') {
+    return new ApiError(401, message, 'UNAUTHORIZED');
+  }
+
+  static conflict(message) {
+    return new ApiError(409, message, 'CONFLICT');
+  }
+
   static notFound(message = 'Resource not found') {
     return new ApiError(404, message, 'NOT_FOUND');
   }

@@ -5,22 +5,26 @@
  */
 const createChatEvents = () => {
   let io = null;
+  const roomFor = (conversationId = 'global') =>
+    conversationId === 'global' ? 'general' : conversationId;
 
   return {
     attach(instance) {
       io = instance;
     },
     emitNewMessage(message) {
-      io?.emit('message:new', message);
+      io?.to(roomFor(message.conversationId)).emit('message:new', message);
     },
-    emitMessageStatus(update) {
-      io?.emit('message:status', update);
+    emitMessageStatus(update, conversationId = 'global') {
+      io?.to(roomFor(conversationId)).emit('message:status', update);
     },
     emitPresence(update) {
       io?.emit('presence:update', update);
     },
-    emitTyping(users) {
-      io?.emit('typing:update', { users });
+    emitTyping(users, conversationId = 'global') {
+      io
+        ?.to(roomFor(conversationId))
+        .emit('typing:update', { users, conversationId });
     },
   };
 };

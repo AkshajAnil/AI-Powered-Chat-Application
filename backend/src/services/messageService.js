@@ -7,7 +7,8 @@ const ApiError = require('../utils/ApiError');
  *
  * `hooks.onMessage` fires for every persisted message (REST *and* socket paths);
  * the agent runtime subscribes to it. `hooks` is mutable so subscribers can be
- * attached after construction without a circular dependency.
+ * attached after construction without a circular dependency. Messages are scoped
+ * to the global room or a private conversation.
  */
 const createMessageService = ({ repository, events, presence, logger, hooks = {} }) => {
   const notify = (message) => {
@@ -21,10 +22,11 @@ const createMessageService = ({ repository, events, presence, logger, hooks = {}
     }
   };
 
-  const sendMessage = async ({ author, text, clientId }) => {
-    const message = await repository.create({ author, text, clientId });
+  const sendMessage = async ({ author, text, clientId, conversationId = 'global' }) => {
+    const message = await repository.create({ author, text, clientId, conversationId });
 
-    const someoneElseOnline = presence.onlineUsers().some((user) => user !== author);
+    const someoneElseOnline =
+      conversationId !== 'global' || presence.onlineUsers().some((user) => user !== author);
     if (someoneElseOnline) {
       const [updated] = await repository.markStatus([message.id], 'delivered');
       if (updated) message.status = updated.status;
@@ -42,14 +44,23 @@ const createMessageService = ({ repository, events, presence, logger, hooks = {}
    * Marks messages as read. `reader` filters out the reader's own messages;
    * pass `null` for system-side reads (e.g. an agent reading what it replied to).
    */
-  const markMessagesRead = async ({ ids, reader = null }) => {
+  const markMessagesRead = async ({ ids, reader = null, conversationId }) => {
     const rows = await repository.findByIds(ids);
-    const eligible = (reader ? rows.filter((row) => row.author !== reader) : rows).map((row) => row.id);
+    const eligible = rows
+      .filter(
+        (row) =>
+          (!reader || row.author !== reader) &&
+          (!conversationId || row.conversationId === conversationId)
+      )
+      .map((row) => row.id);
     if (eligible.length === 0) return [];
 
     const changed = await repository.markStatus(eligible, 'read');
     changed.forEach((row) =>
-      events.emitMessageStatus({ id: row.id, status: row.status, updatedAt: new Date().toISOString() })
+      events.emitMessageStatus(
+        { id: row.id, status: row.status, updatedAt: new Date().toISOString() },
+        row.conversationId
+      )
     );
     return changed;
   };
@@ -57,7 +68,10 @@ const createMessageService = ({ repository, events, presence, logger, hooks = {}
   const markMessagesDelivered = async (ids) => {
     const changed = await repository.markStatus(ids, 'delivered');
     changed.forEach((row) =>
-      events.emitMessageStatus({ id: row.id, status: row.status, updatedAt: new Date().toISOString() })
+      events.emitMessageStatus(
+        { id: row.id, status: row.status, updatedAt: new Date().toISOString() },
+        row.conversationId
+      )
     );
     return changed;
   };

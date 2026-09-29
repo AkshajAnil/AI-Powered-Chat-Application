@@ -2,12 +2,13 @@ const config = require('../config/env');
 const createSqliteMessageRepository = require('./sqliteMessageRepository');
 const createFileMessageRepository = require('./fileMessageRepository');
 const createPostgresMessageRepository = require('./postgresMessageRepository');
+const createRedisMessageRepository = require('./redisMessageRepository');
 
 /**
  * Repository factory. The service layer only ever sees this interface:
  * init | create | findAll | findByIds | markStatus | count | clear | close
  *
- * Drivers: postgres (DB_DRIVER=postgres), sqlite (default), file (JSON fallback).
+ * Drivers: redis (default), postgres, sqlite, file (JSON fallback).
  */
 const createMessageRepository = (overrides = {}) => {
   const driver = (overrides.driver || config.db.driver || 'sqlite').toLowerCase();
@@ -24,8 +25,14 @@ const createMessageRepository = (overrides = {}) => {
     });
   }
 
+  if (driver === 'redis') {
+    return createRedisMessageRepository({
+      redisConfig: overrides.redisConfig || config.db.redis,
+    });
+  }
+
   if (driver !== 'sqlite') {
-    throw new Error(`Unknown DB_DRIVER "${driver}". Use "postgres", "sqlite" or "file".`);
+    throw new Error(`Unknown DB_DRIVER "${driver}". Use "redis", "postgres", "sqlite" or "file".`);
   }
 
   return createSqliteMessageRepository({ filePath });

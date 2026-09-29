@@ -10,13 +10,24 @@ class ApiError extends Error {
   }
 }
 
-const request = async (path, { method = 'GET', body, signal } = {}) => {
+const request = async (path, { method = 'GET', body, signal, authenticated = true } = {}) => {
   let response;
   try {
+    let token = null;
+    if (authenticated) {
+      try {
+        token = JSON.parse(localStorage.getItem('chat.session') || 'null')?.token || null;
+      } catch {
+        token = null;
+      }
+    }
     response = await fetch(`${API_ROOT}${path}`, {
       method,
       signal,
-      headers: body ? { 'content-type': 'application/json' } : undefined,
+      headers: {
+        ...(body ? { 'content-type': 'application/json' } : {}),
+        ...(token ? { authorization: `Bearer ${token}` } : {}),
+      },
       body: body ? JSON.stringify(body) : undefined,
     });
   } catch (err) {
@@ -41,7 +52,18 @@ const request = async (path, { method = 'GET', body, signal } = {}) => {
 };
 
 export const api = {
-  login: (username) => request('/auth/login', { method: 'POST', body: { username } }),
+  login: (username, password) =>
+    request('/auth/login', {
+      method: 'POST',
+      body: { username, password },
+      authenticated: false,
+    }),
+  register: (username, password) =>
+    request('/auth/register', {
+      method: 'POST',
+      body: { username, password },
+      authenticated: false,
+    }),
   fetchMessages: ({ limit = 100, before } = {}) => {
     const params = new URLSearchParams({ limit: String(limit) });
     if (before) params.set('before', before);

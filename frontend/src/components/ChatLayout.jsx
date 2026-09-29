@@ -7,21 +7,23 @@ import MessageComposer, { TypingIndicator } from './MessageComposer.jsx';
 import { useChat } from '../hooks/useChat';
 import { api } from '../api/client';
 
-const ChatLayout = ({ session, onLogout }) => {
+const ChatLayout = ({ session, onLogout, theme, onToggleTheme }) => {
+  const [agents, setAgents] = useState([]);
+  const [activeAgent, setActiveAgent] = useState(null);
   const {
     messages,
     onlineUsers,
     typingUsers,
     connection,
+    conversationReady,
     error,
     clearError,
     sendMessage,
     retryMessage,
     notifyTyping,
-  } = useChat(session.username);
+  } = useChat(session.username, session.token, activeAgent);
 
   const composerRef = useRef(null);
-  const [agents, setAgents] = useState([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -39,6 +41,18 @@ const ChatLayout = ({ session, onLogout }) => {
   }, []);
 
   const agentNames = useMemo(() => new Set(agents.map((agent) => agent.name)), [agents]);
+  const mentionOptions = useMemo(
+    () =>
+      activeAgent
+        ? []
+        : [
+            ...onlineUsers
+              .filter((name) => name !== session.username && !agentNames.has(name))
+              .map((name) => ({ name, type: 'person' })),
+            ...agents.map((agent) => ({ name: agent.name, type: 'agent' })),
+          ],
+    [activeAgent, onlineUsers, session.username, agentNames, agents]
+  );
 
   const handleMention = (name) => composerRef.current?.insertMention(`@${name} `);
 
@@ -49,7 +63,10 @@ const ChatLayout = ({ session, onLogout }) => {
         connection={connection}
         onlineCount={onlineUsers.length}
         agentCount={agents.length}
+        activeAgent={activeAgent}
         onLogout={onLogout}
+        theme={theme}
+        onToggleTheme={onToggleTheme}
       />
 
       {connection !== 'connected' ? (
@@ -64,6 +81,8 @@ const ChatLayout = ({ session, onLogout }) => {
           agents={agents}
           currentUsername={session.username}
           onMention={handleMention}
+          activeAgent={activeAgent}
+          onOpenChat={setActiveAgent}
         />
 
         <main className="chat-main">
@@ -80,8 +99,15 @@ const ChatLayout = ({ session, onLogout }) => {
               ref={composerRef}
               onSend={sendMessage}
               onTypingChange={notifyTyping}
-              disabled={connection !== 'connected'}
-              placeholder="Type a message… or @mention an agent"
+              mentionOptions={mentionOptions}
+              disabled={connection !== 'connected' || !conversationReady}
+              placeholder={
+                !conversationReady
+                  ? 'Opening conversation…'
+                  : activeAgent
+                  ? `Message ${activeAgent} privately…`
+                  : 'Type a message… or @mention an agent'
+              }
             />
           </div>
         </main>

@@ -5,9 +5,10 @@ const errorHandler = require('./middleware/errorHandler');
 const createChatRoutes = require('./routes/chatRoutes');
 const createMessageController = require('./controllers/messageController');
 const createAuthController = require('./controllers/authController');
+const { requireAuth } = require('./middleware/requireAuth');
 const { createLogger } = require('./utils/logger');
 
-const createApp = ({ messageService, presence, config }) => {
+const createApp = ({ messageService, presence, config, authService }) => {
   const app = express();
   const logger = createLogger(config.logLevel, 'http');
 
@@ -31,8 +32,9 @@ const createApp = ({ messageService, presence, config }) => {
 
   const routes = createChatRoutes({
     messageController: createMessageController({ messageService }),
-    authController: createAuthController(),
+    authController: createAuthController({ authService }),
     presence,
+    requireAuth: requireAuth(authService),
   });
 
   app.use('/api', routes);

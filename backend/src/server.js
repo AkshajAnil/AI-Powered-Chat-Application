@@ -5,6 +5,7 @@ const createApp = require('./app');
 const createMessageRepository = require('./repositories/messageRepository');
 const createMessageService = require('./services/messageService');
 const createAgentService = require('./services/agentService');
+const createAuthService = require('./services/authService');
 const createChatEvents = require('./sockets/chatEvents');
 const createSocketServer = require('./sockets/socketServer');
 const { createPresenceStore, createTypingStore } = require('./sockets/presence');
@@ -26,6 +27,12 @@ const createServer = async (overrides = {}) => {
 
   const repository = (overrides.createRepository || createMessageRepository)(overrides.repository);
   await repository.init();
+  const authService = createAuthService({
+    repository,
+    jwtSecret: resolvedConfig.jwtSecret,
+    environment: resolvedConfig.env,
+  });
+  await authService.seedUser(resolvedConfig.seedUser);
 
   const hooks = {};
   const messageService = createMessageService({
@@ -36,7 +43,13 @@ const createServer = async (overrides = {}) => {
     logger: logger.child('messages'),
   });
 
-  const app = createApp({ messageService, presence, config: resolvedConfig, agents: AGENTS });
+  const app = createApp({
+    messageService,
+    presence,
+    config: resolvedConfig,
+    agents: AGENTS,
+    authService,
+  });
   const httpServer = http.createServer(app);
   const io = createSocketServer({
     httpServer,
@@ -44,6 +57,7 @@ const createServer = async (overrides = {}) => {
     presence,
     events,
     typing,
+    authService,
     config: resolvedConfig,
     logger: logger.child('socket'),
   });
@@ -51,9 +65,7 @@ const createServer = async (overrides = {}) => {
   const groq =
     overrides.groq ||
     createGroqClient({
-      apiKey: process.env.GROQ_API_KEY,
-      model: process.env.GROQ_MODEL || 'openai/gpt-oss-120b',
-      temperature: Number.parseFloat(process.env.GROQ_TEMPERATURE || '0.7') || 0.7,
+      ...resolvedConfig.groq,
       logger: logger.child('groq'),
     });
 

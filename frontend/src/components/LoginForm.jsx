@@ -8,7 +8,12 @@ const STORAGE_KEY = 'chat.session';
 export const loadSession = () => {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : null;
+    const session = raw ? JSON.parse(raw) : null;
+    if (!session?.token || session.token.split('.').length !== 3 || !session?.username) {
+      localStorage.removeItem(STORAGE_KEY);
+      return null;
+    }
+    return session;
   } catch {
     return null;
   }
@@ -21,19 +26,28 @@ export const saveSession = (session) => {
 export const clearSession = () => localStorage.removeItem(STORAGE_KEY);
 
 const LoginForm = ({ onLogin }) => {
-  const [username, setUsername] = useState('');
+  const [username, setUsername] = useState('pilot_user');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [registering, setRegistering] = useState(false);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
     const value = username.trim();
-    if (!value || busy) return;
+    if (!value || !password || busy) return;
+    if (registering && password !== confirmPassword) {
+      setError('Passwords do not match.');
+      return;
+    }
 
     setBusy(true);
     setError(null);
     try {
-      const session = await api.login(value);
+      const session = registering
+        ? await api.register(value, password)
+        : await api.login(value, password);
       saveSession(session);
       onLogin(session);
     } catch (err) {
@@ -51,7 +65,7 @@ const LoginForm = ({ onLogin }) => {
         </div>
         <h1>Socket Chat</h1>
         <p className="login-subtitle">
-          Real-time chat powered by React, Express and Socket.io. Pick a username to continue.
+          Sign in to your chat or create an account to join the conversation.
         </p>
 
         <label className="field-label" htmlFor="username">
@@ -62,18 +76,83 @@ const LoginForm = ({ onLogin }) => {
           className="text-input"
           value={username}
           onChange={(event) => setUsername(event.target.value)}
-          placeholder="e.g. ada_lovelace"
+          placeholder="Username"
           autoComplete="username"
           autoFocus
           maxLength={24}
         />
 
-        {error ? <p className="form-error">{error}</p> : null}
+        <label className="field-label" htmlFor="password">
+          Password
+        </label>
+        <input
+          id="password"
+          className="text-input"
+          type="password"
+          value={password}
+          onChange={(event) => setPassword(event.target.value)}
+          placeholder="Enter your password"
+          autoComplete={registering ? 'new-password' : 'current-password'}
+          minLength={4}
+          maxLength={128}
+        />
 
-        <button className="primary-button" type="submit" disabled={busy || !username.trim()}>
-          {busy ? 'Joining…' : 'Start chatting'}
+        {registering ? (
+          <>
+            <label className="field-label" htmlFor="confirm-password">
+              Re-enter password
+            </label>
+            <input
+              id="confirm-password"
+              className="text-input"
+              type="password"
+              value={confirmPassword}
+              onChange={(event) => setConfirmPassword(event.target.value)}
+              placeholder="Enter the same password again"
+              autoComplete="new-password"
+              minLength={4}
+              maxLength={128}
+              required
+            />
+          </>
+        ) : null}
+
+        {registering && confirmPassword && password !== confirmPassword ? (
+          <p className="form-error" role="status">
+            Passwords do not match.
+          </p>
+        ) : error ? (
+          <p className="form-error" role="alert">
+            {error}
+          </p>
+        ) : null}
+
+        <button
+          className="primary-button"
+          type="submit"
+          disabled={
+            busy ||
+            !username.trim() ||
+            !password ||
+            (registering && (!confirmPassword || password !== confirmPassword))
+          }
+        >
+          {busy ? 'Please wait…' : registering ? 'Create account' : 'Sign in'}
         </button>
-        <p className="login-hint">Dummy authentication: no password required.</p>
+        <button
+          type="button"
+          className="auth-mode-button"
+          onClick={() => {
+            setRegistering((current) => !current);
+            setConfirmPassword('');
+            setError(null);
+          }}
+        >
+          {registering ? 'Already registered? Sign in' : 'New here? Create an account'}
+        </button>
+        <p className="login-hint">
+          Demo login: <strong>pilot_user</strong> / <strong>1234</strong>
+        </p>
       </form>
     </div>
   );

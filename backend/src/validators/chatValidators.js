@@ -30,7 +30,7 @@ const validateMessageInput = ({ author, text, clientId }) => {
 const validateListQuery = (query = {}) => {
   const limit = Math.min(Math.max(Number.parseInt(query.limit, 10) || 50, 1), 200);
   const before = query.before ? String(query.before) : null;
-  return { limit, before };
+  return { limit, before, conversationId: 'global' };
 };
 
 const validateReadInput = ({ ids, reader }) => {
