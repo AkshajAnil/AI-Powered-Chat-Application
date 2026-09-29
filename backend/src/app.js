@@ -30,6 +30,18 @@ const createApp = ({ messageService, presence, config, authService }) => {
     next();
   });
 
+  app.get('/', (req, res) => {
+    res.json({
+      success: true,
+      data: {
+        name: 'AI-Powered Chat Application API',
+        status: 'ok',
+        apiBase: '/api',
+        health: '/api/health',
+      },
+    });
+  });
+
   const routes = createChatRoutes({
     messageController: createMessageController({ messageService }),
     authController: createAuthController({ authService }),

@@ -71,6 +71,10 @@ test('REST: health, message creation, history and validation', async (t) => {
   const { baseUrl, cleanup } = await startTestServer();
   t.after(cleanup);
 
+  const root = await fetch(baseUrl).then((r) => r.json());
+  assert.equal(root.success, true);
+  assert.equal(root.data.apiBase, '/api');
+
   const health = await fetch(`${baseUrl}/api/health`).then((r) => r.json());
   assert.equal(health.success, true);
   const session = await registerUser(baseUrl, 'Ada');

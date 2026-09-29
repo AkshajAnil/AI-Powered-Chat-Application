@@ -384,7 +384,6 @@ protection and the sidebar pick it up automatically.
   be verified in any browser); the `useChat` hook and `api/socket` modules are UI-agnostic
   and portable to React Native.
 - Credentials live in `backend/.env` (gitignored) — never commit them.
-- Deployment was not performed; see below for how to deploy.
 
 ---
 
@@ -395,8 +394,9 @@ service and a private free Redis-compatible Key Value service in Singapore. In t
 [Render Dashboard](https://dashboard.render.com/blueprints), create a new Blueprint
 from this GitHub repository and choose the `akshajanil-agent-chat-routing` branch. Enter
 a strong, unique `SEED_PASSWORD` when Render prompts for it; Render generates the JWT
-secret and wires the API to Redis automatically. Once the services are live, the API
-URL is shown in the Render service dashboard; verify it at `/api/health`.
+secret and wires the API to Redis automatically. The deployed API is available at
+`https://ai-powered-chat-app-api.onrender.com`; verify it at `/api/health`. Opening the
+API's root URL returns a small JSON status document; it is not the chat web interface.
 
 The free API can sleep when idle, and free Redis is in-memory only: its data can be lost
 when Redis restarts. Upgrade the Key Value service to a paid plan with persistence before
@@ -408,6 +408,7 @@ until a newly rotated `GROQ_API_KEY` is added privately in the Render service se
 1. Build command `npm run build`, output directory `dist`.
 2. Set `VITE_API_URL=https://your-backend.onrender.com` so the client and Socket.io
    connect to the deployed API.
+3. Deploy the frontend separately to get a browser-accessible chat application URL.
 
 ---
 
